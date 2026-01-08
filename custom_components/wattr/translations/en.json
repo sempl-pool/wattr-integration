@@ -1,0 +1,30 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "This Wattr device is already configured"
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Please check your network and try again.",
+      "invalid_auth": "Invalid API key or Device ID.",
+      "unknown": "An unexpected error occurred."
+    },
+    "step": {
+      "user": {
+        "title": "Wattr Pool Controller Setup",
+        "description": "Configure your Wattr pool controller integration.\n Fetch your API key at https://wattr.sempl.energy/tokenLogin and enter the serial number of your device. \n**Energy Optimization:**\nDo you want to boost/reduce energy consumption of your heatpump depending on sensor data? You can link a sensor (like your energy meter) to automatically optimize your pool's energy usage. Make sure to set the boosting/reducing thresholds in the Wattr app configuration.",
+        "data": {
+          "api_key": "API Key",
+          "device_id": "Device ID",
+          "add_linked_sensor": "Add linked sensor for energy optimization"
+        }
+      },
+      "linked_sensor": {
+        "title": "Select Energy Sensor", 
+        "description": "Select a sensor to monitor for energy optimization.",
+        "data": {
+          "linked_sensor": "Sensor Entity"
+        }
+      }
+    }
+  }
+}

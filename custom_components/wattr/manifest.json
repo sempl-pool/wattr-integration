@@ -1,0 +1,15 @@
+{
+  "domain": "wattr",
+  "name": "Wattr",
+  "version": "1.0.0",
+  "codeowners": [
+    "@YariSempl"
+  ],
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/wattr",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "quality_scale": "silver",
+  "requirements": [],
+  "loggers": ["custom_components.wattr"]
+}
