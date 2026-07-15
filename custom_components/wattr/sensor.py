@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
+from homeassistant.const import CONF_DEVICE_ID
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -15,6 +18,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from . import SCAN_INTERVAL, WattrConfigEntry
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +30,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up Wattr sensors from a config entry."""
     api = entry.runtime_data
+    device_id = entry.data[CONF_DEVICE_ID]
 
     async def async_update_data():
         """Fetch all water quality and temperature data from API."""
@@ -55,12 +60,17 @@ async def async_setup_entry(
     await coordinator.async_config_entry_first_refresh()
 
     entities = [
-        WattrPhSensor(coordinator, entry.entry_id),
-        WattrRxSensor(coordinator, entry.entry_id),
-        WattrTemperatureSensor(coordinator, entry.entry_id),
+        WattrPhSensor(coordinator, entry.entry_id, device_id),
+        WattrRxSensor(coordinator, entry.entry_id, device_id),
+        WattrTemperatureSensor(coordinator, entry.entry_id, device_id),
     ]
 
     async_add_entities(entities)
+
+    # Notification sensor
+    notifications_coordinator: DataUpdateCoordinator = entry.coordinators.get("notifications")
+    if notifications_coordinator is not None:
+        async_add_entities([WattrNotificationSensor(notifications_coordinator, entry.entry_id, device_id)])
 
 
 class WattrBaseSensor(CoordinatorEntity, SensorEntity):
@@ -68,9 +78,19 @@ class WattrBaseSensor(CoordinatorEntity, SensorEntity):
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: DataUpdateCoordinator, entry_id: str) -> None:
+    def __init__(self, coordinator: DataUpdateCoordinator, entry_id: str, device_id: str) -> None:
         super().__init__(coordinator)
         self._entry_id = entry_id
+        self._device_id = device_id
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name="Wattr Pool Controller",
+            manufacturer="Sempl",
+            model="Wattr",
+        )
 
 
 class WattrPhSensor(WattrBaseSensor):
@@ -128,3 +148,43 @@ class WattrTemperatureSensor(WattrBaseSensor):
         return {
             "seconds_ago": self.coordinator.data.get("temp_age"),
         }
+
+
+class WattrNotificationSensor(WattrBaseSensor):
+    """Sensor showing the count of active Wattr notifications."""
+
+    _attr_name = "Wattr Notifications"
+    _attr_icon = "mdi:bell"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = "notifications"
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self._entry_id}_notifications"
+
+    def _active_notifications(self) -> list[dict]:
+        notifications = (self.coordinator.data or {}).get("notifications", [])
+        return [n for n in notifications if n.get("notification", {}).get("active", False)]
+
+    @property
+    def native_value(self) -> int:
+        return len(self._active_notifications())
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        result = []
+        for n in self._active_notifications():
+            notif = n.get("notification", {})
+            ntype = notif.get("type", {})
+            ts_ms = notif.get("timestamp")
+            timestamp = (
+                datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
+                if ts_ms
+                else None
+            )
+            result.append({
+                "topic": ntype.get("topic"),
+                "title": notif.get("title", {}).get("en"),
+                "timestamp": timestamp,
+            })
+        return {"active_notifications": result}

@@ -1,5 +1,6 @@
 from __future__ import annotations  # noqa: D100
 
+import json
 import logging
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -171,3 +172,80 @@ class WattrApi:
         except Exception as e:
             _LOGGER.error("Exception while fetching smart mode status: %s", e)
             return None
+
+    async def get_toggle_pulse_relays(self) -> list[dict]:
+        """Fetch available toggle and pulse relays from the Wattr API.
+
+        Returns a list of relay dicts with keys: function, id, name, state.
+        function 4 = toggle relay, function 5 = pulse relay.
+        Returns an empty list when no relays are available.
+        """
+        url = f"{BASE_URL}/api/v1/externalControl/getTogglePulseRelays/{self._id}"
+        headers = {"Authorization": self._token}
+
+        try:
+            async with self._session.get(url, headers=headers) as response:
+                _LOGGER.debug("Toggle/pulse relays response status: %s", response.status)
+                if response.status == 204 or response.status == 404:
+                    _LOGGER.debug("No relays available (status %s)", response.status)
+                    return []
+                if response.status != 200:
+                    _LOGGER.error(
+                        "Failed to fetch toggle/pulse relays: %s", response.status
+                    )
+                    return []
+                raw = await response.text()
+                _LOGGER.debug("Toggle/pulse relays raw response: %s", raw)
+                data = json.loads(raw)
+                if not data:
+                    _LOGGER.debug("Toggle/pulse relays returned empty payload")
+                    return []
+                # API may return {"relays": [...]} or a plain list
+                if isinstance(data, dict):
+                    data = data.get("relays", [])
+                if not isinstance(data, list):
+                    _LOGGER.debug("Toggle/pulse relays response is not a list: %s", type(data))
+                    return []
+                _LOGGER.debug("Toggle/pulse relays found: %s", data)
+                return data
+        except Exception as e:
+            _LOGGER.error("Exception while fetching toggle/pulse relays: %s", e)
+            return []
+
+    async def activate_relay(self, relay_id, activate: bool) -> bool:
+        """Activate or deactivate a relay via the Wattr API."""
+        url = f"{BASE_URL}/api/v1/externalControl/activateRelais/{self._id}"
+        headers = {"Authorization": self._token, "Content-Type": "application/json"}
+        payload = {"relaisId": relay_id, "Activate": activate}
+        _LOGGER.debug("Activating relay %s: %s", relay_id, activate)
+
+        try:
+            async with self._session.post(url, headers=headers, json=payload) as resp:
+                if resp.status != 200:
+                    _LOGGER.error(
+                        "Failed to activate relay %s: %s", relay_id, resp.status
+                    )
+                    return False
+                _LOGGER.debug("Successfully activated relay %s: %s", relay_id, activate)
+                return True
+        except Exception as e:
+            _LOGGER.error("Exception while activating relay %s: %s", relay_id, e)
+            return False
+
+    async def get_notifications(self) -> list[dict]:
+        """Fetch active notifications from the Wattr API."""
+        url = f"{BASE_URL}/api/v1/externalData/notifications/{self._id}"
+        headers = {"Authorization": self._token}
+
+        try:
+            async with self._session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    _LOGGER.error(
+                        "Failed to fetch notifications: %s", response.status
+                    )
+                    return []
+                data = await response.json()
+                return data.get("notifications", []) if isinstance(data, dict) else []
+        except Exception as e:
+            _LOGGER.error("Exception while fetching notifications: %s", e)
+            return []

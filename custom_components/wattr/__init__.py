@@ -105,6 +105,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: WattrConfigEntry) -> boo
     )
     await smart_mode_coordinator.async_config_entry_first_refresh()
     entry.coordinators["smart_mode"] = smart_mode_coordinator
+
+    # Setup relay coordinator
+    async def async_update_relays():
+        """Fetch current toggle/pulse relay states from the API."""
+        try:
+            relays = await api.get_toggle_pulse_relays()
+            return {"relays": relays}
+        except Exception as err:
+            _LOGGER.error("Error fetching relays from Wattr API: %s", err)
+            raise UpdateFailed from err
+
+    relay_coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name="wattr_relays",
+        update_method=async_update_relays,
+        update_interval=SCAN_INTERVAL,
+    )
+    await relay_coordinator.async_config_entry_first_refresh()
+    entry.coordinators["relays"] = relay_coordinator
+
+    # Setup notifications coordinator
+    async def async_update_notifications():
+        """Fetch current notifications from the API."""
+        try:
+            notifications = await api.get_notifications()
+            return {"notifications": notifications}
+        except Exception as err:
+            _LOGGER.error("Error fetching notifications from Wattr API: %s", err)
+            raise UpdateFailed from err
+
+    notifications_coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name="wattr_notifications",
+        update_method=async_update_notifications,
+        update_interval=SCAN_INTERVAL,
+    )
+    await notifications_coordinator.async_config_entry_first_refresh()
+    entry.coordinators["notifications"] = notifications_coordinator
+
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
     return True
