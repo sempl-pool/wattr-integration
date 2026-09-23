@@ -8,6 +8,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WattrApi
@@ -39,30 +40,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: WattrConfigEntry) -> boo
     # setup linked sensor push if defined
     if linked_sensor:
 
-        async def async_push_sensor_data():
+        async def async_push_sensor_data(now=None):
             """Fetch sensor state and push via pushP1Data."""
             state = hass.states.get(linked_sensor)
             if state is None:
-                raise UpdateFailed(f"Sensor {linked_sensor} not found")
+                _LOGGER.warning("Linked sensor '%s' not found, skipping push", linked_sensor)
+                return
+            _LOGGER.debug("Pushing linked sensor '%s' value: %s", linked_sensor, state.state)
             try:
                 await api.pushP1Data(state.state)
-            except Exception as err:
-                _LOGGER.exception("Error pushing sensor value")
-                raise UpdateFailed from err
+            except Exception:
+                _LOGGER.exception("Error pushing sensor value for '%s'", linked_sensor)
 
-        coordinator = DataUpdateCoordinator(
-            hass,
-            _LOGGER,
-            name="wattr_linked_p1_sensor",
-            update_method=async_push_sensor_data,
-            update_interval=SCAN_INTERVAL,
-        )
+        # Run immediately on setup
+        await async_push_sensor_data()
 
-        await coordinator.async_config_entry_first_refresh()
-
-        if not hasattr(entry, "coordinators"):
-            entry.coordinators = {}
-        entry.coordinators["linked_p1_sensor"] = coordinator
+        # Schedule repeating pushes every SCAN_INTERVAL
+        cancel = async_track_time_interval(hass, async_push_sensor_data, SCAN_INTERVAL)
+        entry.async_on_unload(cancel)
 
     # Setup number coordinator
     async def async_update_setpoint():
@@ -105,6 +100,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: WattrConfigEntry) -> boo
     )
     await smart_mode_coordinator.async_config_entry_first_refresh()
     entry.coordinators["smart_mode"] = smart_mode_coordinator
+
+    # Setup relay coordinator
+    async def async_update_relays():
+        """Fetch current toggle/pulse relay states from the API."""
+        try:
+            relays = await api.get_toggle_pulse_relays()
+            return {"relays": relays}
+        except Exception as err:
+            _LOGGER.error("Error fetching relays from Wattr API: %s", err)
+            raise UpdateFailed from err
+
+    relay_coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name="wattr_relays",
+        update_method=async_update_relays,
+        update_interval=SCAN_INTERVAL,
+    )
+    await relay_coordinator.async_config_entry_first_refresh()
+    entry.coordinators["relays"] = relay_coordinator
+
+    # Setup notifications coordinator
+    async def async_update_notifications():
+        """Fetch current notifications from the API."""
+        try:
+            notifications = await api.get_notifications()
+            return {"notifications": notifications}
+        except Exception as err:
+            _LOGGER.error("Error fetching notifications from Wattr API: %s", err)
+            raise UpdateFailed from err
+
+    notifications_coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name="wattr_notifications",
+        update_method=async_update_notifications,
+        update_interval=SCAN_INTERVAL,
+    )
+    await notifications_coordinator.async_config_entry_first_refresh()
+    entry.coordinators["notifications"] = notifications_coordinator
+
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
     return True

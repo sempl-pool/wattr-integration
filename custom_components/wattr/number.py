@@ -6,12 +6,14 @@ from homeassistant.components.number import NumberEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_DEVICE_ID
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
     DataUpdateCoordinator,
 )
 
 from .api import WattrApi
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +44,15 @@ class WattrSetpointNumber(CoordinatorEntity, NumberEntity):
         CoordinatorEntity.__init__(self, coordinator)  # direct init
         self._api = api
         self._device_id = device_id
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name="Wattr Pool Controller",
+            manufacturer="Sempl",
+            model="Wattr",
+        )
 
     @property
     def name(self) -> str:
