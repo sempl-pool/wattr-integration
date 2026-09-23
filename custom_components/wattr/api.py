@@ -88,7 +88,8 @@ class WattrApi:
         try:
             async with self._session.post(url, json=payload, headers=headers) as resp:
                 if resp.status != 200:
-                    _LOGGER.error("Failed to send P1 data: %s", resp.status)
+                    response_text = await resp.text()
+                    _LOGGER.error("Failed to send P1 data: %s — response: %s", resp.status, response_text)
                     return False
                 _LOGGER.debug("Successfully sent P1 data: %s", value)
                 return True
